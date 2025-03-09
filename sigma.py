@@ -1,45 +1,86 @@
 import pandas as pd
-import numpy as np
-from sklearn.preprocessing import MinMaxScaler
+import os
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
 
-# Load datasets
-sales_data = pd.read_excel('Book1.xlsx')
-weather_data = pd.read_csv('New Delhi.csv')
+# Mapping of sales location codes to city names
+city_mapping = {
+    "BHP": "Bhopal", "DGP": "Durgapur", "DLI": "New Delhi", "GRN": "Gurgaon",
+    "GZB": "Ghaziabad", "HBI": "Hubli", "JMU": "Jammu", "JPR": "Jaipur",
+    "KCI": "Kochi", "LKW": "Lucknow", "MDI": "Madurai", "PNE": "Pune",
+    "PTA": "Patna"
+}
 
-# Convert date columns to datetime and ensure consistent timezone handling
-sales_data['Invoice Date'] = pd.to_datetime(sales_data['Invoice Date'])
-weather_data['date'] = pd.to_datetime(weather_data['date']).dt.tz_localize(None)  # Remove timezone info
+def preprocess_sales_weather(sales_file, weather_folder):
+    # Load the sales data
+    sales_data = pd.read_excel(sales_file, sheet_name=0)
+    sales_data['Invoice Date'] = pd.to_datetime(sales_data['Invoice Date'])
 
-# Merge datasets
-merged_data = pd.merge(sales_data, weather_data, left_on='Invoice Date', right_on='date', how='left')
+    # Replace sales location codes with city names
+    sales_data['City'] = sales_data['Sales Location'].map(city_mapping)
 
-# Feature engineering
-merged_data['day_of_week'] = merged_data['Invoice Date'].dt.dayofweek
-merged_data['month'] = merged_data['Invoice Date'].dt.month
-merged_data['is_weekend'] = merged_data['day_of_week'].isin([5, 6]).astype(int)
+    # Process each city separately
+    processed_data = []
 
-# Select relevant features
-features = ['temperature_2m', 'relative_humidity_2m', 'dew_point_2m', 'apparent_temperature', 
-            'precipitation', 'cloud_cover', 'day_of_week', 'month', 'is_weekend']
+    for city_code, city_name in city_mapping.items():
+        city_sales = sales_data[sales_data['City'] == city_name]
 
-# Handle missing values
-merged_data[features] = merged_data[features].interpolate()
+        # Construct weather file path
+        weather_file = os.path.join(weather_folder, f"{city_name}.csv")
+        
+        if not os.path.exists(weather_file):
+            print(f"Warning: Weather data for {city_name} not found. Skipping...")
+            continue
 
-# Normalize features
-scaler = MinMaxScaler()
-merged_data[features] = scaler.fit_transform(merged_data[features])
+        # Load weather data
+        weather_data = pd.read_csv(weather_file)
+        weather_data['date'] = pd.to_datetime(weather_data['date']).dt.date
 
-# Create lagged features
-merged_data['sales_lag_1'] = merged_data.groupby('Sales Location')['Invoice Quantity'].shift(1)
-merged_data['temp_lag_1'] = merged_data.groupby('Sales Location')['temperature_2m'].shift(1)
+        # Aggregate weather data to daily level
+        daily_weather = weather_data.groupby('date').mean().reset_index()
+        daily_weather.rename(columns={'date': 'Invoice Date'}, inplace=True)
 
-# Final dataset
-final_data = merged_data.dropna().reset_index(drop=True)
+        # Merge sales and weather data
+        daily_weather['Invoice Date'] = pd.to_datetime(daily_weather['Invoice Date'])
+        merged_city_data = pd.merge(city_sales, daily_weather, on='Invoice Date', how='left')
 
-# Train-test split (example)
-train_data = final_data[final_data['Invoice Date'] < '2024-01-01']
-test_data = final_data[final_data['Invoice Date'] >= '2024-01-01']
+        # Handle missing values
+        merged_city_data = merged_city_data.ffill()
 
-# Save processed data to CSV files
-train_data.to_csv('processed_train_data.csv', index=False)
-test_data.to_csv('processed_test_data.csv', index=False)
+        # Feature Engineering
+        merged_city_data['Day'] = merged_city_data['Invoice Date'].dt.day
+        merged_city_data['Month'] = merged_city_data['Invoice Date'].dt.month
+        merged_city_data['Weekday'] = merged_city_data['Invoice Date'].dt.weekday
+
+        # Compute 7-day rolling averages for weather variables
+        weather_features = ['temperature_2m', 'relative_humidity_2m', 'wind_speed_10m']
+        for feature in weather_features:
+            merged_city_data[f'{feature}_7day_avg'] = merged_city_data[feature].rolling(window=7, min_periods=1).mean()
+
+        # Encode categorical variables using one-hot encoding
+        merged_city_data = pd.get_dummies(merged_city_data, columns=['Sales Zone', 'Sales Channel'], drop_first=True)
+
+        # Drop unnecessary columns
+        merged_city_data.drop(columns=['Invoice Date', 'Sales Location', 'City'], inplace=True)
+
+        processed_data.append(merged_city_data)
+
+    # Concatenate processed data for all cities
+    final_data = pd.concat(processed_data, ignore_index=True)
+
+    return final_data
+
+# Example Usage
+sales_file = "Book1.xlsx"  # Path to your sales data file
+weather_folder = "weather_data"  # Folder containing weather CSV files for all cities
+
+preprocessed_data = preprocess_sales_weather(sales_file, weather_folder)
+
+# Save the processed data to a CSV file
+preprocessed_data.to_csv("processed_data.csv", index=False)
+
+# Display the processed data
+print("Processed data shape:", preprocessed_data.shape)
+print("First few rows of processed data:")
+print(preprocessed_data.head())
