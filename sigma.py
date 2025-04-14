@@ -17,6 +17,10 @@ city_mapping = {
 def preprocess_sales_weather(sales_file, weather_folder):
     # Load the sales data
     sales_data = pd.read_excel(sales_file, sheet_name=0)
+    
+    # Keep only the required columns from the sales data
+    sales_data = sales_data[['Invoice Date', 'Invoice Quantity', 'Sales Location']]
+    
     sales_data['Invoice Date'] = pd.to_datetime(sales_data['Invoice Date'])
 
     # Replace sales location codes with city names
@@ -60,9 +64,6 @@ def preprocess_sales_weather(sales_file, weather_folder):
         for feature in weather_features:
             merged_city_data[f'{feature}_7day_avg'] = merged_city_data[feature].rolling(window=7, min_periods=1).mean()
 
-        # Encode categorical variables using one-hot encoding
-        merged_city_data = pd.get_dummies(merged_city_data, columns=['Sales Zone', 'Sales Channel'], drop_first=True)
-
         # Drop unnecessary columns
         merged_city_data.drop(columns=['Invoice Date', 'Sales Location', 'City'], inplace=True)
 
@@ -81,52 +82,32 @@ preprocessed_data = preprocess_sales_weather(sales_file, weather_folder)
 
 # Add feature correlation analysis before PCA
 def analyze_features(data):
-    """
-    Analyze features in the dataset including correlation, distribution, and outliers.
-    
-    Args:
-        data: DataFrame to analyze
-    """
-    # Select only numeric columns for analysis
     numeric_data = data.select_dtypes(include=['float64', 'int64'])
-    
     print(f"Analyzing {len(numeric_data.columns)} numeric features...")
-    
-    # Handle missing values for the analysis
     if numeric_data.isna().any().any():
         print(f"Filling {numeric_data.isna().sum().sum()} NaN values temporarily for analysis...")
         numeric_data = numeric_data.fillna(numeric_data.mean())
-    
-    # Calculate correlation matrix
     corr_matrix = numeric_data.corr()
-    
-    # Plot correlation heatmap
     plt.figure(figsize=(14, 12))
-    mask = np.triu(np.ones_like(corr_matrix, dtype=bool))
     cmap = sns.diverging_palette(230, 20, as_cmap=True)
-    sns.heatmap(corr_matrix, mask=mask, cmap=cmap, vmax=1, vmin=-1, center=0,
+    sns.heatmap(corr_matrix, cmap=cmap, vmax=1, vmin=-1, center=0,
                 square=True, linewidths=.5, annot=False, fmt='.2f', 
                 cbar_kws={"shrink": .5})
     plt.title('Feature Correlation Matrix')
     plt.tight_layout()
     plt.savefig('feature_correlation.png')
-    
-    # Identify highly correlated features (|correlation| > 0.7)
     high_corr_pairs = []
     for i in range(len(corr_matrix.columns)):
         for j in range(i+1, len(corr_matrix.columns)):
             if abs(corr_matrix.iloc[i, j]) > 0.7:
                 high_corr_pairs.append((corr_matrix.columns[i], corr_matrix.columns[j], 
                                        corr_matrix.iloc[i, j]))
-    
     if high_corr_pairs:
         print("\nHighly correlated feature pairs (|correlation| > 0.7):")
         for feat1, feat2, corr in sorted(high_corr_pairs, key=lambda x: abs(x[2]), reverse=True):
             print(f"{feat1} and {feat2}: {corr:.3f}")
     else:
         print("\nNo feature pairs with |correlation| > 0.7 found.")
-    
-    # Feature distributions
     plt.figure(figsize=(20, 15))
     for i, column in enumerate(numeric_data.columns[:min(15, len(numeric_data.columns))]):
         plt.subplot(3, 5, i+1)
@@ -134,8 +115,8 @@ def analyze_features(data):
         plt.title(column)
     plt.tight_layout()
     plt.savefig('feature_distributions.png')
-    
     return corr_matrix
+
 
 # Apply PCA analysis
 def apply_pca(data, n_components=None, variance_threshold=0.95):
