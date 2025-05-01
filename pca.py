@@ -45,6 +45,7 @@ def preprocess_sales_weather(sales_file, weather_folder):
         merged_city_data['Day'] = merged_city_data['Invoice Date'].dt.day
         merged_city_data['Month'] = merged_city_data['Invoice Date'].dt.month
         merged_city_data['Weekday'] = merged_city_data['Invoice Date'].dt.weekday
+        merged_city_data['Year'] = merged_city_data['Invoice Date'].dt.year
 
         weather_features = ['temperature_2m', 'relative_humidity_2m', 'wind_speed_10m']
         for feature in weather_features:
