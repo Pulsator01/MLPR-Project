@@ -8,6 +8,8 @@ finalProcessing/data_final.csv
 finalProcessing/final_weather_data.csv
 finalProcessing/sales_data.csv
 
+finalProcessing/*.csv
+
 # C extensions
 *.so
 
