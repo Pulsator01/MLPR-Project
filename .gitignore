@@ -4,9 +4,9 @@ __pycache__/
 *$py.class
 
 # large files
-data_final.csv
-final_weather_data.csv
-sales_data.csv
+finalProcessing/data_final.csv
+finalProcessing/final_weather_data.csv
+finalProcessing/sales_data.csv
 
 # C extensions
 *.so
