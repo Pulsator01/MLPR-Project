@@ -13,13 +13,16 @@ weather_df = pd.read_csv('finalProcessing/final_weather_data.csv')
 weather_df['date'] = pd.to_datetime(weather_df['date']).dt.normalize()
 weather_df['city'] = weather_df['city'].str.strip()
 
+# Keep only the first weather row for each (date, city)
+weather_df = weather_df.drop_duplicates(subset=['date', 'city'], keep='first')
+
 # Load sales data
 sales_df = pd.read_csv('finalProcessing/sales_data.csv')
 sales_df['Invoice Date'] = pd.to_datetime(sales_df['Invoice Date']).dt.normalize()
 sales_df['Sales Location'] = sales_df['Sales Location'].map(city_mapping)
 sales_df['Sales Location'] = sales_df['Sales Location'].str.strip()
 
-# Merge on date and city
+# Merge on date and city (inner join)
 merged_df = pd.merge(
     sales_df,
     weather_df,
